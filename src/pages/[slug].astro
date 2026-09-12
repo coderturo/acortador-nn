@@ -4,10 +4,12 @@ import { db } from '../lib/db'
 
 export const prerender = false
 
-const { slug } = Astro.params
-const destino = slug ? (links as Record<string, string>)[slug] : undefined
+type Link = { url: string; categoria: string }
 
-if (destino) {
+const { slug } = Astro.params
+const entrada = slug ? (links as Record<string, Link>)[slug] : undefined
+
+if (entrada) {
   const hoy = new Date().toISOString().slice(0, 10)
 
   try {
@@ -23,7 +25,7 @@ if (destino) {
     // Si falla el conteo, igual redirigimos.
   }
 
-  return Astro.redirect(destino, 302)
+  return Astro.redirect(entrada.url, 302)
 }
 ---
 

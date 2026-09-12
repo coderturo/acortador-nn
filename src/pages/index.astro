@@ -5,6 +5,9 @@ import links from '../data/links.json'
 
 export const prerender = false
 
+type Link = { url: string; categoria: string }
+const linksTipados = links as Record<string, Link>
+
 const result = await db.execute(`
   SELECT slug, day, count
   FROM clicks_daily
@@ -20,7 +23,7 @@ for (const row of result.rows) {
 }
 
 const hoy = new Date().toISOString().slice(0, 10)
-const slugs = Object.keys(links).sort()
+const slugs = Object.keys(linksTipados).sort()
 
 function limpiarUrl(url: string) {
   return url.replace(/^https?:\/\//, '').replace(/\/$/, '')
@@ -37,7 +40,8 @@ const filasData = slugs.map((slug) => {
 
   return {
     slug,
-    destino: (links as Record<string, string>)[slug],
+    destino: linksTipados[slug].url,
+    categoria: linksTipados[slug].categoria,
     totalSemana,
     ultimoDiaConClicks,
   }
@@ -47,8 +51,8 @@ const filasData = slugs.map((slug) => {
 <Layout>
   <main>
     <header class="cabecera">
-      <p class="marca">Nuevos Negocios</p>
-      <h1>Enlaces</h1>
+      <p class="marca">nuevosnegocios.link</p>
+      <h1>nuevosnegocios.link</h1>
       <p class="subtitulo">{slugs.length} enlaces disponibles</p>
     </header>
 
@@ -61,7 +65,7 @@ const filasData = slugs.map((slug) => {
         <input
           type="text"
           id="buscador"
-          placeholder="Buscar por nombre o destino…"
+          placeholder="Buscar por nombre, destino o categoría…"
           autocomplete="off"
           spellcheck="false"
         />
@@ -76,16 +80,20 @@ const filasData = slugs.map((slug) => {
     </div>
 
     <ul class="lista" id="lista">
-      {filasData.map(({ slug, destino, totalSemana, ultimoDiaConClicks }) => (
+      {filasData.map(({ slug, destino, categoria, totalSemana, ultimoDiaConClicks }) => (
         <li
           class="fila"
           data-slug={slug}
           data-destino={limpiarUrl(destino)}
+          data-categoria={categoria}
           data-clicks={totalSemana}
           data-reciente={ultimoDiaConClicks}
         >
-          <a class="enlace" href={`/${slug}`}>
-            <span class="slug">/{slug}</span>
+          <a class="enlace" href={`/${slug}`} target="_blank" rel="noopener noreferrer">
+            <div class="linea-superior">
+              <span class="slug">/{slug}</span>
+              <span class="badge">{categoria}</span>
+            </div>
             <span class="destino">{limpiarUrl(destino)}</span>
           </a>
           <span class="clicks">
@@ -110,29 +118,31 @@ const filasData = slugs.map((slug) => {
 
   .cabecera {
     margin-bottom: 2rem;
+    text-align: center;
   }
 
   .marca {
-    margin: 0 0 0.5rem;
+    margin: 0 0 0.75rem;
     font-size: 0.9rem;
     color: var(--accent);
     font-weight: 600;
   }
 
   h1 {
+    font-family: var(--pixel);
     margin: 0;
-    font-size: 2.25rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
+    font-size: clamp(2.25rem, 8vw, 3.25rem);
+    font-weight: 400;
+    line-height: 1;
+    letter-spacing: 0.01em;
   }
 
   .subtitulo {
-    margin: 0.5rem 0 0;
+    margin: 0.75rem 0 0;
     color: var(--text-muted);
     font-size: 0.95rem;
   }
 
-  /* ---------- Toolbar sticky con vidrio esmerilado ---------- */
   .toolbar {
     position: sticky;
     top: 0.75rem;
@@ -237,7 +247,6 @@ const filasData = slugs.map((slug) => {
     color: var(--bg);
   }
 
-  /* ---------- Lista ---------- */
   .lista {
     list-style: none;
     margin: 0;
@@ -261,9 +270,15 @@ const filasData = slugs.map((slug) => {
   .enlace {
     display: flex;
     flex-direction: column;
-    gap: 0.15rem;
+    gap: 0.2rem;
     text-decoration: none;
     min-width: 0;
+  }
+
+  .linea-superior {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
   }
 
   .slug {
@@ -272,6 +287,19 @@ const filasData = slugs.map((slug) => {
   }
 
   .enlace:hover .slug {
+    color: var(--accent);
+  }
+
+  .badge {
+    flex-shrink: 0;
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    background: var(--surface);
+    border: 1px solid var(--border);
     color: var(--accent);
   }
 
@@ -338,9 +366,11 @@ const filasData = slugs.map((slug) => {
     for (const fila of filas) {
       const slug = fila.dataset.slug ?? ''
       const destino = fila.dataset.destino ?? ''
+      const categoria = fila.dataset.categoria ?? ''
       const coincide =
         slug.toLowerCase().includes(termino) ||
-        destino.toLowerCase().includes(termino)
+        destino.toLowerCase().includes(termino) ||
+        categoria.toLowerCase().includes(termino)
 
       fila.hidden = !coincide
       if (coincide) visibles++
@@ -376,7 +406,6 @@ const filasData = slugs.map((slug) => {
     ordenar(criterio)
   }
 
-  // Restaurar el último orden guardado (o "az" por defecto)
   const ordenGuardado = localStorage.getItem(CLAVE_ORDEN) ?? 'az'
   activarTab(ordenGuardado)
   filtrar()
@@ -391,7 +420,6 @@ const filasData = slugs.map((slug) => {
     })
   }
 
-  // Atajo "/" para enfocar el buscador, "Escape" para limpiarlo
   document.addEventListener('keydown', (e) => {
     if (e.key === '/' && document.activeElement !== buscador) {
       e.preventDefault()
