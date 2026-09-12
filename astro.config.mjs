@@ -7,6 +7,6 @@ import vercel from '@astrojs/vercel';
 export default defineConfig({
   output: 'server',
   adapter: vercel({
-    middlewareMode: 'edge',
+    edgeMiddleware: true,
   })
 })
