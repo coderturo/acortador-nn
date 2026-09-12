@@ -1,17 +1,407 @@
 ---
+import Layout from '../layouts/Layout.astro'
+import { db } from '../lib/db'
+import links from '../data/links.json'
 
+export const prerender = false
+
+const result = await db.execute(`
+  SELECT slug, day, count
+  FROM clicks_daily
+  WHERE day >= date('now', '-6 days')
+  ORDER BY slug, day
+`)
+
+const porSlug: Record<string, { day: string; count: number }[]> = {}
+for (const row of result.rows) {
+  const slug = row.slug as string
+  if (!porSlug[slug]) porSlug[slug] = []
+  porSlug[slug].push({ day: row.day as string, count: row.count as number })
+}
+
+const hoy = new Date().toISOString().slice(0, 10)
+const slugs = Object.keys(links).sort()
+
+function limpiarUrl(url: string) {
+  return url.replace(/^https?:\/\//, '').replace(/\/$/, '')
+}
+
+const filasData = slugs.map((slug) => {
+  const filas = porSlug[slug] ?? []
+  const totalSemana = filas.reduce((acc, f) => acc + f.count, 0)
+  const ultimoDiaConClicks = filas
+    .filter((f) => f.count > 0)
+    .map((f) => f.day)
+    .sort()
+    .at(-1) ?? ''
+
+  return {
+    slug,
+    destino: (links as Record<string, string>)[slug],
+    totalSemana,
+    ultimoDiaConClicks,
+  }
+})
 ---
 
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
-</html>
+<Layout>
+  <main>
+    <header class="cabecera">
+      <p class="marca">Nuevos Negocios</p>
+      <h1>Enlaces</h1>
+      <p class="subtitulo">{slugs.length} enlaces disponibles</p>
+    </header>
+
+    <div class="toolbar">
+      <div class="buscador-wrapper">
+        <svg class="icono-lupa" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" />
+          <path d="m20 20-3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+        </svg>
+        <input
+          type="text"
+          id="buscador"
+          placeholder="Buscar por nombre o destino…"
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <kbd class="tecla">/</kbd>
+      </div>
+
+      <div class="tabs" role="group" aria-label="Ordenar enlaces">
+        <button class="tab" data-orden="az" type="button" aria-pressed="true">A–Z</button>
+        <button class="tab" data-orden="clicks" type="button" aria-pressed="false">Clicks</button>
+        <button class="tab" data-orden="recientes" type="button" aria-pressed="false">Recientes</button>
+      </div>
+    </div>
+
+    <ul class="lista" id="lista">
+      {filasData.map(({ slug, destino, totalSemana, ultimoDiaConClicks }) => (
+        <li
+          class="fila"
+          data-slug={slug}
+          data-destino={limpiarUrl(destino)}
+          data-clicks={totalSemana}
+          data-reciente={ultimoDiaConClicks}
+        >
+          <a class="enlace" href={`/${slug}`}>
+            <span class="slug">/{slug}</span>
+            <span class="destino">{limpiarUrl(destino)}</span>
+          </a>
+          <span class="clicks">
+            {totalSemana} <span class="clicks-label">últimos 7 días</span>
+          </span>
+        </li>
+      ))}
+    </ul>
+
+    <p class="sin-resultados" id="sinResultados" hidden>
+      No se encontraron enlaces.
+    </p>
+  </main>
+</Layout>
+
+<style>
+  main {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 4rem 1.5rem;
+  }
+
+  .cabecera {
+    margin-bottom: 2rem;
+  }
+
+  .marca {
+    margin: 0 0 0.5rem;
+    font-size: 0.9rem;
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: 2.25rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .subtitulo {
+    margin: 0.5rem 0 0;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+  }
+
+  /* ---------- Toolbar sticky con vidrio esmerilado ---------- */
+  .toolbar {
+    position: sticky;
+    top: 0.75rem;
+    z-index: 10;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .buscador-wrapper {
+    flex: 1 1 14rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0 0.85rem;
+    border-radius: 8px;
+    background: rgba(29, 26, 24, 0.85);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    transition: border-color 0.15s;
+  }
+
+  .buscador-wrapper:focus-within {
+    border-color: var(--accent);
+  }
+
+  .icono-lupa {
+    flex-shrink: 0;
+    color: var(--text-muted);
+  }
+
+  .buscador-wrapper:focus-within .icono-lupa {
+    color: var(--accent);
+  }
+
+  #buscador {
+    flex: 1;
+    width: 100%;
+    padding: 0.75rem 0;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.95rem;
+    outline: none;
+  }
+
+  #buscador::placeholder {
+    color: var(--text-muted);
+  }
+
+  .tecla {
+    flex-shrink: 0;
+    min-width: 1.5rem;
+    height: 1.5rem;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--bg);
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 0.75rem;
+  }
+
+  .buscador-wrapper:focus-within .tecla {
+    opacity: 0;
+  }
+
+  .tabs {
+    flex: 0 0 auto;
+    display: inline-flex;
+    gap: 0.15rem;
+    padding: 0.2rem;
+    border-radius: 8px;
+    background: rgba(29, 26, 24, 0.85);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .tab {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.55rem 0.75rem;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .tab:hover {
+    color: var(--text);
+  }
+
+  .tab[aria-pressed='true'] {
+    background: var(--accent);
+    color: var(--bg);
+  }
+
+  /* ---------- Lista ---------- */
+  .lista {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .fila {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .fila[hidden] {
+    display: none;
+  }
+
+  .enlace {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    text-decoration: none;
+    min-width: 0;
+  }
+
+  .slug {
+    font-weight: 600;
+    font-size: 1.05rem;
+  }
+
+  .enlace:hover .slug {
+    color: var(--accent);
+  }
+
+  .destino {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .clicks {
+    flex-shrink: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-align: right;
+  }
+
+  .clicks-label {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: var(--text-muted);
+  }
+
+  .sin-resultados {
+    color: var(--text-muted);
+    text-align: center;
+    padding: 2rem 0;
+  }
+
+  @media (max-width: 480px) {
+    main {
+      padding: 2.5rem 1.25rem;
+    }
+
+    h1 {
+      font-size: 1.75rem;
+    }
+
+    .toolbar {
+      flex-direction: column;
+    }
+
+    .tecla {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  const CLAVE_ORDEN = 'nn-acortador-orden'
+
+  const buscador = document.getElementById('buscador') as HTMLInputElement
+  const lista = document.getElementById('lista') as HTMLUListElement
+  const sinResultados = document.getElementById('sinResultados') as HTMLElement
+  const tabs = document.querySelectorAll<HTMLButtonElement>('.tab')
+  const filas = Array.from(lista.querySelectorAll<HTMLLIElement>('.fila'))
+
+  function filtrar() {
+    const termino = buscador.value.trim().toLowerCase()
+    let visibles = 0
+
+    for (const fila of filas) {
+      const slug = fila.dataset.slug ?? ''
+      const destino = fila.dataset.destino ?? ''
+      const coincide =
+        slug.toLowerCase().includes(termino) ||
+        destino.toLowerCase().includes(termino)
+
+      fila.hidden = !coincide
+      if (coincide) visibles++
+    }
+
+    sinResultados.hidden = visibles > 0
+  }
+
+  function ordenar(criterio: string) {
+    const copia = [...filas]
+
+    copia.sort((a, b) => {
+      if (criterio === 'clicks') {
+        return Number(b.dataset.clicks) - Number(a.dataset.clicks)
+      }
+      if (criterio === 'recientes') {
+        const rA = a.dataset.reciente || ''
+        const rB = b.dataset.reciente || ''
+        return rB.localeCompare(rA)
+      }
+      return (a.dataset.slug ?? '').localeCompare(b.dataset.slug ?? '')
+    })
+
+    for (const fila of copia) {
+      lista.appendChild(fila)
+    }
+  }
+
+  function activarTab(criterio: string) {
+    for (const t of tabs) t.setAttribute('aria-pressed', 'false')
+    const tabElegida = document.querySelector<HTMLButtonElement>(`[data-orden="${criterio}"]`)
+    tabElegida?.setAttribute('aria-pressed', 'true')
+    ordenar(criterio)
+  }
+
+  // Restaurar el último orden guardado (o "az" por defecto)
+  const ordenGuardado = localStorage.getItem(CLAVE_ORDEN) ?? 'az'
+  activarTab(ordenGuardado)
+  filtrar()
+
+  buscador.addEventListener('input', filtrar)
+
+  for (const tab of tabs) {
+    tab.addEventListener('click', () => {
+      const criterio = tab.dataset.orden ?? 'az'
+      activarTab(criterio)
+      localStorage.setItem(CLAVE_ORDEN, criterio)
+    })
+  }
+
+  // Atajo "/" para enfocar el buscador, "Escape" para limpiarlo
+  document.addEventListener('keydown', (e) => {
+    if (e.key === '/' && document.activeElement !== buscador) {
+      e.preventDefault()
+      buscador.focus()
+      buscador.select()
+    }
+    if (e.key === 'Escape' && document.activeElement === buscador) {
+      buscador.value = ''
+      filtrar()
+      buscador.blur()
+    }
+  })
+</script>
