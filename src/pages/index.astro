@@ -22,21 +22,53 @@ for (const row of result.rows) {
   porSlug[slug].push({ day: row.day as string, count: row.count as number })
 }
 
-const hoy = new Date().toISOString().slice(0, 10)
+// Generamos los últimos 7 días como strings "YYYY-MM-DD", del más viejo al más nuevo (hoy al final)
+function ultimosSieteDias() {
+  const dias: string[] = []
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
+    dias.push(d.toISOString().slice(0, 10))
+  }
+  return dias
+}
+const diasSemana = ultimosSieteDias()
+
 const slugs = Object.keys(linksTipados).sort()
 
 function limpiarUrl(url: string) {
   return url.replace(/^https?:\/\//, '').replace(/\/$/, '')
 }
 
+const SPARK_ANCHO = 50
+const SPARK_ALTO = 22
+const BARRA_ANCHO = 4
+const BARRA_GAP = 3
+const BARRA_MIN = 2
+const BARRA_MAX = 16
+
 const filasData = slugs.map((slug) => {
-  const filas = porSlug[slug] ?? []
-  const totalSemana = filas.reduce((acc, f) => acc + f.count, 0)
-  const ultimoDiaConClicks = filas
-    .filter((f) => f.count > 0)
-    .map((f) => f.day)
-    .sort()
-    .at(-1) ?? ''
+  const conteoPorDia = Object.fromEntries(
+    (porSlug[slug] ?? []).map((f) => [f.day, f.count])
+  )
+  const valoresSpark = diasSemana.map((dia) => conteoPorDia[dia] ?? 0)
+  const totalSemana = valoresSpark.reduce((acc, v) => acc + v, 0)
+  const maxSpark = Math.max(...valoresSpark, 1)
+
+  const barras = valoresSpark.map((valor, i) => {
+    const altura =
+      valor === 0 ? BARRA_MIN : Math.max(BARRA_MIN, Math.round((valor / maxSpark) * BARRA_MAX))
+    return {
+      x: 2 + i * (BARRA_ANCHO + BARRA_GAP),
+      y: SPARK_ALTO - altura - 2,
+      altura,
+      conClicks: valor > 0,
+      esHoy: i === valoresSpark.length - 1,
+    }
+  })
+
+  const ultimoDiaConClicks =
+    [...diasSemana].reverse().find((dia) => (conteoPorDia[dia] ?? 0) > 0) ?? ''
 
   return {
     slug,
@@ -44,6 +76,7 @@ const filasData = slugs.map((slug) => {
     categoria: linksTipados[slug].categoria,
     totalSemana,
     ultimoDiaConClicks,
+    barras,
   }
 })
 ---
@@ -51,7 +84,7 @@ const filasData = slugs.map((slug) => {
 <Layout>
   <main>
     <header class="cabecera">
-      <p class="marca">TEAM #NN</p>
+      <p class="marca">nuevosnegocios.site</p>
       <h1>link.nuevosnegocios.site</h1>
       <p class="subtitulo">{slugs.length} enlaces disponibles</p>
     </header>
@@ -80,7 +113,7 @@ const filasData = slugs.map((slug) => {
     </div>
 
     <ul class="lista" id="lista">
-      {filasData.map(({ slug, destino, categoria, totalSemana, ultimoDiaConClicks }) => (
+      {filasData.map(({ slug, destino, categoria, totalSemana, ultimoDiaConClicks, barras }) => (
         <li
           class="fila"
           data-slug={slug}
@@ -96,9 +129,49 @@ const filasData = slugs.map((slug) => {
             </div>
             <span class="destino">{limpiarUrl(destino)}</span>
           </a>
-          <span class="clicks">
-            {totalSemana} <span class="clicks-label">últimos 7 días</span>
-          </span>
+
+          <div class="analitica">
+            <svg
+              class="spark"
+              viewBox={`0 0 ${SPARK_ANCHO} ${SPARK_ALTO}`}
+              width={SPARK_ANCHO}
+              height={SPARK_ALTO}
+              aria-hidden="true"
+            >
+              {barras.map((b) => (
+                <rect
+                  x={b.x}
+                  y={b.y}
+                  width={BARRA_ANCHO}
+                  height={b.altura}
+                  rx="1"
+                  class:list={[
+                    'barra',
+                    { 'con-clicks': b.conClicks, 'es-hoy': b.esHoy },
+                  ]}
+                />
+              ))}
+            </svg>
+            <span class="stat">
+              <span class="stat-valor">{totalSemana}</span>
+              <span class="stat-label">7d</span>
+            </span>
+          </div>
+
+          <button
+            class="copiar"
+            type="button"
+            data-slug={slug}
+            aria-label={`Copiar enlace corto de /${slug}`}
+          >
+            <svg class="icono-copiar" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <rect x="9" y="9" width="11" height="11" rx="2.5" stroke="currentColor" stroke-width="2" />
+              <path d="M5 15V5.5A1.5 1.5 0 0 1 6.5 4H15" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            </svg>
+            <svg class="icono-check" width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="m5 12 4.5 4.5L19 7" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
         </li>
       ))}
     </ul>
@@ -111,7 +184,7 @@ const filasData = slugs.map((slug) => {
 
 <style>
   main {
-    max-width: 640px;
+    max-width: 680px;
     margin: 0 auto;
     padding: 4rem 1.5rem;
   }
@@ -257,9 +330,8 @@ const filasData = slugs.map((slug) => {
   .fila {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    padding: 1rem 0;
+    gap: 0.75rem;
+    padding: 0.85rem 0;
     border-bottom: 1px solid var(--border);
   }
 
@@ -268,6 +340,7 @@ const filasData = slugs.map((slug) => {
   }
 
   .enlace {
+    flex: 1;
     display: flex;
     flex-direction: column;
     gap: 0.2rem;
@@ -311,18 +384,89 @@ const filasData = slugs.map((slug) => {
     white-space: nowrap;
   }
 
-  .clicks {
+  /* ---------- Sparkline + contador ---------- */
+  .analitica {
     flex-shrink: 0;
-    font-size: 0.95rem;
-    font-weight: 600;
-    text-align: right;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding-left: 0.6rem;
+    border-left: 1px solid var(--border);
   }
 
-  .clicks-label {
+  .spark {
     display: block;
-    font-size: 0.7rem;
-    font-weight: 400;
+  }
+
+  .barra {
+    fill: var(--border);
+  }
+
+  .barra.con-clicks {
+    fill: color-mix(in srgb, var(--accent) 55%, var(--border));
+  }
+
+  .barra.es-hoy.con-clicks {
+    fill: var(--accent);
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    line-height: 1.1;
+    min-width: 1.8rem;
+  }
+
+  .stat-valor {
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+
+  .stat-label {
+    font-size: 0.65rem;
     color: var(--text-muted);
+  }
+
+  /* ---------- Botón copiar ---------- */
+  .copiar {
+    flex-shrink: 0;
+    width: 2.2rem;
+    height: 2.2rem;
+    display: grid;
+    place-items: center;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    cursor: pointer;
+    position: relative;
+  }
+
+  .copiar:hover {
+    color: var(--text);
+    border-color: var(--text-muted);
+  }
+
+  .copiar svg {
+    grid-area: 1 / 1;
+    transition: opacity 0.15s, transform 0.15s;
+  }
+
+  .copiar .icono-check {
+    opacity: 0;
+    transform: scale(0.6);
+    color: var(--accent);
+  }
+
+  .copiar.copiado .icono-copiar {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+
+  .copiar.copiado .icono-check {
+    opacity: 1;
+    transform: scale(1);
   }
 
   .sin-resultados {
@@ -336,15 +480,15 @@ const filasData = slugs.map((slug) => {
       padding: 2.5rem 1.25rem;
     }
 
-    h1 {
-      font-size: 1.75rem;
-    }
-
     .toolbar {
       flex-direction: column;
     }
 
     .tecla {
+      display: none;
+    }
+
+    .spark {
       display: none;
     }
   }
@@ -431,5 +575,29 @@ const filasData = slugs.map((slug) => {
       filtrar()
       buscador.blur()
     }
+  })
+
+  // ---------- Botón copiar ----------
+  let resetTimer: ReturnType<typeof setTimeout>
+
+  lista.addEventListener('click', async (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('.copiar')
+    if (!btn) return
+
+    const url = `${location.origin}/${btn.dataset.slug}`
+
+    try {
+      await navigator.clipboard.writeText(url)
+    } catch {
+      return
+    }
+
+    for (const el of document.querySelectorAll('.copiar.copiado')) {
+      el.classList.remove('copiado')
+    }
+
+    clearTimeout(resetTimer)
+    btn.classList.add('copiado')
+    resetTimer = setTimeout(() => btn.classList.remove('copiado'), 1400)
   })
 </script>
