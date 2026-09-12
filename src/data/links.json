@@ -1,4 +1,3 @@
-cat > src/data/links.json << 'EOF'
 {
   "sharepoint": {
     "url": "https://maquisa.sharepoint.com/sites/EQPCallCenter/",
@@ -53,4 +52,3 @@ cat > src/data/links.json << 'EOF'
     "categoria": "Maquinarias"
   }
 }
-EOF
