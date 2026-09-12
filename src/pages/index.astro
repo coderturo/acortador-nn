@@ -600,4 +600,72 @@ const filasData = slugs.map((slug) => {
     btn.classList.add('copiado')
     resetTimer = setTimeout(() => btn.classList.remove('copiado'), 1400)
   })
+
+  // ---------- Actualización automática de estadísticas ----------
+  const SPARK_ALTO = 22
+  const BARRA_MIN = 2
+  const BARRA_MAX = 16
+
+  function ultimosSieteDiasCliente(): string[] {
+    const dias: string[] = []
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date()
+      d.setUTCDate(d.getUTCDate() - i)
+      dias.push(d.toISOString().slice(0, 10))
+    }
+    return dias
+  }
+
+  type FilaStats = { slug: string; day: string; count: number }
+
+  async function actualizarStats() {
+    try {
+      const res = await fetch('/api/stats')
+      if (!res.ok) return
+      const filasApi = (await res.json()) as FilaStats[]
+
+      const porSlug: Record<string, Record<string, number>> = {}
+      for (const f of filasApi) {
+        if (!porSlug[f.slug]) porSlug[f.slug] = {}
+        porSlug[f.slug][f.day] = f.count
+      }
+
+      const diasSemana = ultimosSieteDiasCliente()
+
+      for (const fila of filas) {
+        const slug = fila.dataset.slug ?? ''
+        const conteoPorDia = porSlug[slug] ?? {}
+        const valores = diasSemana.map((d) => conteoPorDia[d] ?? 0)
+        const total = valores.reduce((a, b) => a + b, 0)
+        const max = Math.max(...valores, 1)
+
+        fila.dataset.clicks = String(total)
+        fila.dataset.reciente =
+          [...diasSemana].reverse().find((d) => (conteoPorDia[d] ?? 0) > 0) ?? ''
+
+        const statValor = fila.querySelector<HTMLElement>('.stat-valor')
+        if (statValor) statValor.textContent = String(total)
+
+        const barrasEls = fila.querySelectorAll<SVGRectElement>('.barra')
+        barrasEls.forEach((rect, i) => {
+          const valor = valores[i]
+          const altura =
+            valor === 0 ? BARRA_MIN : Math.max(BARRA_MIN, Math.round((valor / max) * BARRA_MAX))
+          rect.setAttribute('height', String(altura))
+          rect.setAttribute('y', String(SPARK_ALTO - altura - 2))
+          rect.classList.toggle('con-clicks', valor > 0)
+        })
+      }
+
+      // Si el orden activo es "Clicks" o "Recientes", reordenamos con los datos nuevos
+      const tabActiva = document.querySelector<HTMLButtonElement>('.tab[aria-pressed="true"]')
+      if (tabActiva?.dataset.orden === 'clicks' || tabActiva?.dataset.orden === 'recientes') {
+        ordenar(tabActiva.dataset.orden)
+      }
+    } catch {
+      // Actualización en segundo plano — si falla, no interrumpimos nada visible
+    }
+  }
+
+  setInterval(actualizarStats, 30000)
 </script>
