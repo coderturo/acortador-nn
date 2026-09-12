@@ -1,0 +1,39 @@
+---
+import links from '../data/links.json'
+import { db } from '../lib/db'
+
+export const prerender = false
+
+const { slug } = Astro.params
+const destino = slug ? (links as Record<string, string>)[slug] : undefined
+
+if (destino) {
+  const hoy = new Date().toISOString().slice(0, 10)
+
+  try {
+    await db.execute({
+      sql: `
+        INSERT INTO clicks_daily (slug, day, count)
+        VALUES (?, ?, 1)
+        ON CONFLICT(slug, day) DO UPDATE SET count = count + 1
+      `,
+      args: [slug, hoy],
+    })
+  } catch {
+    // Si falla el conteo, igual redirigimos.
+  }
+
+  return Astro.redirect(destino, 302)
+}
+---
+
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Enlace no encontrado</title>
+  </head>
+  <body>
+    <p>No existe ningún enlace con ese nombre.</p>
+    <a href="/">Volver al inicio</a>
+  </body>
+</html>
